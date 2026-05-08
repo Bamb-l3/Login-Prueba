@@ -1,216 +1,77 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portal Médico - Login y Panel</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Transiciones suaves para mostrar/ocultar paneles */
-        .fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
-</head>
-<body class="bg-gray-100 min-h-screen font-sans text-gray-800">
+// CONFIGURACIÓN DE SUPABASE
+const SUPABASE_URL = 'https://zustmsiqymroqgugjzqd.supabase.co';
+// USA LA ANON KEY AQUÍ, NO LA SECRET KEY
+const SUPABASE_ANON_KEY = 'TU_ANON_PUBLIC_KEY'; 
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    <div id="toast" class="fixed top-5 right-5 bg-green-500 text-white px-6 py-3 rounded shadow-lg hidden transition-opacity z-50">
-        Cambios guardados exitosamente.
-    </div>
+// LÓGICA DE LOGIN
+async function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorMsg = document.getElementById('loginError');
+    
+    // 1. Autenticación con Supabase Auth
+    const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
 
-    <div id="login-view" class="min-h-screen flex items-center justify-center p-4 fade-in">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div class="p-8">
-                <h2 class="text-2xl font-bold text-center text-blue-600 mb-6">Acceso al Portal</h2>
-                
-                <div class="flex rounded-md bg-gray-200 p-1 mb-6">
-                    <button id="btn-tab-patient" class="flex-1 py-2 rounded-md bg-white shadow text-sm font-medium transition-all" onclick="setRole('patient')">Paciente</button>
-                    <button id="btn-tab-clinic" class="flex-1 py-2 rounded-md text-gray-600 text-sm font-medium transition-all hover:text-gray-800" onclick="setRole('clinic')">Clínica</button>
-                </div>
+    if (error) {
+        showError(errorMsg, "Credenciales incorrectas: " + error.message);
+        return;
+    }
 
-                <form id="loginForm" onsubmit="handleLogin(event)">
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
-                        <input type="email" id="loginEmail" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="correo@ejemplo.com">
-                    </div>
-                    <div class="mb-6">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-                        <input type="password" id="loginPassword" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="••••••••">
-                    </div>
-                    <p id="loginError" class="text-red-500 text-sm mb-4 hidden"></p>
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-300">
-                        Iniciar Sesión
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
+    // 2. Una vez logueado, buscamos su información en la tabla 'pacientes'
+    // Asumimos que el ID de auth coincide con el UUID de tu tabla
+    const { data: usuario, error: dbError } = await _supabase
+        .from('pacientes') 
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
 
-    <div id="patient-view" class="hidden min-h-screen p-4 md:p-8 fade-in">
-        <div class="max-w-3xl mx-auto">
-            <div class="flex justify-between items-center mb-8">
-                <h1 class="text-3xl font-bold text-gray-800">Mi Perfil - Paciente</h1>
-                <button onclick="logout()" class="text-red-500 hover:text-red-700 font-medium">Cerrar Sesión</button>
-            </div>
-            <div class="bg-white rounded-xl shadow-md p-6 md:p-8">
-                <form id="patientForm" onsubmit="saveProfile(event, 'patient')">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo *</label>
-                            <input type="text" id="patName" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono *</label>
-                            <input type="tel" id="patPhone" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" required pattern="[0-9]{8,15}" title="Solo números (8-15 dígitos)">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Fecha de Nacimiento</label>
-                            <input type="date" id="patDate" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Sangre</label>
-                            <select id="patBlood" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
-                                <option value="">Seleccionar...</option>
-                                <option value="A+">A+</option><option value="O+">O+</option><option value="B+">B+</option><option value="AB+">AB+</option>
-                            </select>
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Alergias / Notas Médicas</label>
-                            <textarea id="patNotes" rows="3" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
-                        </div>
-                    </div>
-                    <p id="patientError" class="text-red-500 text-sm mt-4 hidden"></p>
-                    <div class="mt-6 flex justify-end">
-                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-md transition-colors duration-300">Guardar Cambios</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    if (dbError) {
+        console.error("Error al obtener perfil:", dbError);
+    }
 
-    <div id="clinic-view" class="hidden min-h-screen p-4 md:p-8 fade-in">
-        <div class="max-w-3xl mx-auto">
-            <div class="flex justify-between items-center mb-8">
-                <h1 class="text-3xl font-bold text-gray-800">Perfil Institucional - Clínica</h1>
-                <button onclick="logout()" class="text-red-500 hover:text-red-700 font-medium">Cerrar Sesión</button>
-            </div>
-            <div class="bg-white rounded-xl shadow-md p-6 md:p-8">
-                <form id="clinicForm" onsubmit="saveProfile(event, 'clinic')">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la Clínica *</label>
-                            <input type="text" id="cliName" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Email de Contacto *</label>
-                            <input type="email" id="cliEmail" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" required>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono Principal *</label>
-                            <input type="tel" id="cliPhone" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" required>
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Dirección Completa *</label>
-                            <input type="text" id="cliAddress" class="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none" required minlength="10">
-                        </div>
-                    </div>
-                    <p id="clinicError" class="text-red-500 text-sm mt-4 hidden"></p>
-                    <div class="mt-6 flex justify-end">
-                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md transition-colors duration-300">Actualizar Datos</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
+    document.getElementById('login-view').classList.add('hidden');
+    
+    // Redirección basada en el rol guardado en la tabla
+    if (usuario && usuario.rol === 'clinic') {
+        document.getElementById('clinic-view').classList.remove('hidden');
+        fillClinicForm(usuario);
+    } else {
+        document.getElementById('patient-view').classList.remove('hidden');
+        fillPatientForm(usuario);
+    }
+}
 
-    <script>
-        let currentRole = 'patient'; // 'patient' o 'clinic'
+// Función para llenar el formulario del Paciente
+function fillPatientForm(data) {
+    if (!data) return;
+    document.getElementById('patName').value = data.nombre || '';
+    document.getElementById('patPhone').value = data.telefono || '';
+    document.getElementById('patDate').value = data.fecha_nacimiento || '';
+    document.getElementById('patBlood').value = data.tipo_sangre || 'A+';
+    document.getElementById('patNotes').value = data.notas || '';
+}
 
-        // Cambiar estilos de las pestañas en el login
-        function setRole(role) {
-            currentRole = role;
-            const btnPatient = document.getElementById('btn-tab-patient');
-            const btnClinic = document.getElementById('btn-tab-clinic');
+// Función para guardar cambios (UPSERT)
+async function saveProfile(e, type) {
+    e.preventDefault();
+    const { data: { user } } = await _supabase.auth.getUser();
+    
+    let updates = {
+        id: user.id,
+        nombre: type === 'patient' ? document.getElementById('patName').value : document.getElementById('cliName').value,
+        telefono: type === 'patient' ? document.getElementById('patPhone').value : document.getElementById('cliPhone').value,
+        // Agrega aquí los demás campos según tus columnas en Supabase
+    };
 
-            if (role === 'patient') {
-                btnPatient.className = "flex-1 py-2 rounded-md bg-white shadow text-sm font-medium transition-all text-gray-800";
-                btnClinic.className = "flex-1 py-2 rounded-md text-gray-600 text-sm font-medium transition-all hover:text-gray-800 bg-transparent shadow-none";
-            } else {
-                btnClinic.className = "flex-1 py-2 rounded-md bg-white shadow text-sm font-medium transition-all text-gray-800";
-                btnPatient.className = "flex-1 py-2 rounded-md text-gray-600 text-sm font-medium transition-all hover:text-gray-800 bg-transparent shadow-none";
-            }
-            
-            // Limpiar errores al cambiar de pestaña
-            document.getElementById('loginError').classList.add('hidden');
-        }
+    const { error } = await _supabase.from('pacientes').upsert(updates);
 
-        // Validación de Login
-        function handleLogin(e) {
-            e.preventDefault();
-            const email = document.getElementById('loginEmail').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            const errorMsg = document.getElementById('loginError');
-
-            // Regex básico para validar email
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-            if (!email || !password) {
-                showError(errorMsg, "Por favor, completa todos los campos.");
-                return;
-            }
-            if (!emailRegex.test(email)) {
-                showError(errorMsg, "Ingresa un correo electrónico válido.");
-                return;
-            }
-            if (password.length < 6) {
-                showError(errorMsg, "La contraseña debe tener al menos 6 caracteres.");
-                return;
-            }
-
-            // Si pasa las validaciones, simulamos el login ocultando/mostrando vistas
-            document.getElementById('login-view').classList.add('hidden');
-            
-            if (currentRole === 'patient') {
-                document.getElementById('patient-view').classList.remove('hidden');
-            } else {
-                document.getElementById('clinic-view').classList.remove('hidden');
-            }
-            
-            // Limpiar formulario de login
-            document.getElementById('loginForm').reset();
-        }
-
-        // Función auxiliar para mostrar errores
-        function showError(element, message) {
-            element.textContent = message;
-            element.classList.remove('hidden');
-            setTimeout(() => { element.classList.add('hidden'); }, 4000);
-        }
-
-        // Validación y simulación de guardado de perfil
-        function saveProfile(e, type) {
-            e.preventDefault();
-            
-            // Las validaciones de campos vacíos y formatos (email, tel) las maneja HTML5 con los atributos 'required', 'type="email"' y 'pattern'.
-            // Aquí podríamos agregar validaciones personalizadas extra.
-            
-            // Simular guardado exitoso
-            const toast = document.getElementById('toast');
-            toast.classList.remove('hidden');
-            toast.style.opacity = 1;
-            
-            setTimeout(() => {
-                toast.style.opacity = 0;
-                setTimeout(() => toast.classList.add('hidden'), 300);
-            }, 3000);
-        }
-
-        // Cerrar sesión y volver al login
-        function logout() {
-            document.getElementById('patient-view').classList.add('hidden');
-            document.getElementById('clinic-view').classList.add('hidden');
-            document.getElementById('login-view').classList.remove('hidden');
-            setRole('patient'); // Resetear al rol por defecto
-        }
-    </script>
-</body>
-</html>
+    if (!error) {
+        const toast = document.getElementById('toast');
+        toast.classList.remove('hidden');
+        setTimeout(() => toast.classList.add('hidden'), 3000);
+    } else {
+        alert("Error al guardar: " + error.message);
+    }
+}
